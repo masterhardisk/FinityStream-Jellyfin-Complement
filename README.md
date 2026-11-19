@@ -18,7 +18,7 @@ El catálogo mostrará el complemento cuando GitHub Actions publique la primera 
 
 ## 2. Configura los avisos
 
-Abre **Panel de control → Complementos → FinityStream Notifications**, introduce la URL facilitada por FinityStream, activa los avisos y pulsa **Save**. El complemento gestiona internamente su credencial de envío.
+Abre **Panel de control → Complementos → FinityStream Notifications**, activa los avisos y pulsa **Save**. El complemento se conecta automáticamente al servicio de FinityStream.
 
 ## 3. Prueba una notificación
 

@@ -17,6 +17,10 @@ internal sealed class LibraryNotifications(
     IServerApplicationHost host,
     ILogger<LibraryNotifications> logger) : BackgroundService
 {
+    private static readonly Uri ServiceUrl = new("https://finitystream.gerardcontador.com/");
+    private static readonly Uri WebhookUrl = new(ServiceUrl, "v1/webhooks/jellyfin");
+    private static readonly Uri RegistrationUrl = new(ServiceUrl, "v1/installations");
+
     private readonly Channel<LibraryEvent> _events = Channel.CreateBounded<LibraryEvent>(
         new BoundedChannelOptions(1024) { SingleReader = true });
 
@@ -44,18 +48,6 @@ internal sealed class LibraryNotifications(
                     continue;
                 }
 
-                if (!Uri.TryCreate(config.WebhookUrl, UriKind.Absolute, out var webhookUrl)
-                    || webhookUrl.Scheme != Uri.UriSchemeHttps
-                    || string.IsNullOrEmpty(webhookUrl.Host)
-                    || webhookUrl.AbsolutePath == "/"
-                    || !string.IsNullOrEmpty(webhookUrl.UserInfo)
-                    || !string.IsNullOrEmpty(webhookUrl.Query)
-                    || !string.IsNullOrEmpty(webhookUrl.Fragment))
-                {
-                    logger.LogWarning("FinityStream webhook URL is missing or invalid in plugin settings");
-                    continue;
-                }
-
                 var serverId = host.SystemId;
                 if (!IsValidSecret(config.WebhookSecret) || config.EnrollmentSecret.Length > 0)
                 {
@@ -67,7 +59,7 @@ internal sealed class LibraryNotifications(
                     }
 
                     var installationId = await RegisterInstallationAsync(
-                        http, webhookUrl, config.WebhookSecret, config.EnrollmentSecret, stoppingToken);
+                        http, config.WebhookSecret, config.EnrollmentSecret, stoppingToken);
                     if (installationId is null)
                     {
                         continue;
@@ -76,7 +68,7 @@ internal sealed class LibraryNotifications(
                     serverId = installationId;
                 }
 
-                await SendAsync(http, webhookUrl, config.WebhookSecret, serverId, item, stoppingToken);
+                await SendAsync(http, config.WebhookSecret, serverId, item, stoppingToken);
             }
         }
         finally
@@ -113,7 +105,7 @@ internal sealed class LibraryNotifications(
     }
 
     private async Task SendAsync(
-        HttpClient http, Uri webhookUrl, string secret, string serverId, LibraryEvent item, CancellationToken cancellationToken)
+        HttpClient http, string secret, string serverId, LibraryEvent item, CancellationToken cancellationToken)
     {
         var payload = new
         {
@@ -128,16 +120,14 @@ internal sealed class LibraryNotifications(
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Plugin.Instance?.Configuration is not { Enabled: true } current
-                || current.WebhookSecret != secret
-                || !Uri.TryCreate(current.WebhookUrl, UriKind.Absolute, out var currentUrl)
-                || currentUrl != webhookUrl)
+                || current.WebhookSecret != secret)
             {
                 return;
             }
 
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, webhookUrl)
+                using var request = new HttpRequestMessage(HttpMethod.Post, WebhookUrl)
                 {
                     Content = JsonContent.Create(payload, options: new System.Text.Json.JsonSerializerOptions()),
                 };
@@ -175,24 +165,12 @@ internal sealed class LibraryNotifications(
     }
 
     private async Task<string?> RegisterInstallationAsync(
-        HttpClient http, Uri webhookUrl, string webhookSecret, string enrollmentSecret,
+        HttpClient http, string webhookSecret, string enrollmentSecret,
         CancellationToken cancellationToken)
     {
-        const string webhookSuffix = "/v1/webhooks/jellyfin";
-        if (!webhookUrl.AbsolutePath.EndsWith(webhookSuffix, StringComparison.Ordinal))
-        {
-            logger.LogWarning("FinityStream webhook URL must end in {Path} for automatic registration", webhookSuffix);
-            return null;
-        }
-
-        var registrationUrl = new UriBuilder(webhookUrl)
-        {
-            Path = webhookUrl.AbsolutePath[..^webhookSuffix.Length] + "/v1/installations",
-        }.Uri;
-
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, registrationUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Post, RegistrationUrl);
             request.Headers.Add("X-Webhook-Secret", webhookSecret);
             request.Headers.Add("X-Enrollment-Secret", enrollmentSecret);
             using var response = await http.SendAsync(request, cancellationToken);

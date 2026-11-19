@@ -14,10 +14,6 @@
                     <input id="FinityStreamEnabled" type="checkbox" is="emby-checkbox">
                     <span>Send notifications for new movies and episodes</span>
                 </label>
-                <div class="inputContainer">
-                    <label for="FinityStreamWebhookUrl">Webhook URL</label>
-                    <input id="FinityStreamWebhookUrl" type="url" is="emby-input">
-                </div>
                 <p id="FinityStreamStatus" role="status"></p>
                 <button id="FinityStreamSave" is="emby-button" type="submit" class="raised button-submit block" disabled>Save</button>
             </form>
@@ -28,7 +24,6 @@
             const pluginId = 'f8faee20-de25-47cc-b2d0-6413e3d78673';
             const page = document.querySelector('#FinityStreamNotificationsPage');
             const enabled = page.querySelector('#FinityStreamEnabled');
-            const url = page.querySelector('#FinityStreamWebhookUrl');
             const status = page.querySelector('#FinityStreamStatus');
             const save = page.querySelector('#FinityStreamSave');
             let config;
@@ -40,7 +35,6 @@
                 try {
                     config = await window.ApiClient.getPluginConfiguration(pluginId);
                     enabled.checked = config.Enabled;
-                    url.value = config.WebhookUrl || '';
                     save.disabled = false;
                 } catch {
                     status.textContent = 'Could not load plugin settings.';
@@ -49,21 +43,8 @@
 
             page.querySelector('form').addEventListener('submit', async event => {
                 event.preventDefault();
-                const webhookUrl = url.value.trim();
-                if (enabled.checked || webhookUrl) {
-                    try {
-                        const parsed = new URL(webhookUrl);
-                        if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.pathname === '/'
-                            || parsed.username || parsed.password || /[?#\s]/.test(webhookUrl)) {
-                            throw new Error('Invalid webhook URL');
-                        }
-                    } catch {
-                        status.textContent = 'Enter the full HTTPS webhook URL.';
-                        return;
-                    }
-                }
                 save.disabled = true;
-                const next = { ...config, Enabled: enabled.checked, WebhookUrl: webhookUrl };
+                const next = { ...config, Enabled: enabled.checked };
                 try {
                     await window.ApiClient.updatePluginConfiguration(pluginId, next);
                     config = next;
