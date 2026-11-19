@@ -49,7 +49,7 @@ export FINITYSTREAM_WEBHOOK_URL='https://TU_DOMINIO/ruta/del/webhook'
 dotnet build Jellyfin.Plugin.FinityStream.csproj -c Release
 ```
 
-En **Settings → Secrets and variables → Actions → Variables**, crea `FINITYSTREAM_WEBHOOK_URL` con la URL HTTPS completa del webhook. La URL se incorpora al DLL y es pública. Cada secreto de webhook se configura por servidor en Jellyfin.
+En **Settings → Secrets and variables → Actions → Secrets**, crea `FINITYSTREAM_WEBHOOK_URL` con la URL HTTPS completa del webhook. La URL se incorpora al DLL y es pública. Cada secreto de webhook se configura por servidor en Jellyfin.
 
 El workflow de GitHub Actions compila las pull requests. Al subir o integrar cambios en `main`, calcula la versión con el número de ejecución. Después de compilar, crea el tag para ese commit y publica el ZIP y el manifiesto en GitHub Releases. Reejecutar el mismo workflow conserva la versión. La URL que se añade al catálogo es:
 

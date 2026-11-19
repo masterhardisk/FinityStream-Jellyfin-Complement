@@ -14,15 +14,15 @@ jobs:
     outputs:
       tag: ${{ steps.build.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
       - name: Build plugin
         id: build
         shell: bash
         env:
-          FINITYSTREAM_WEBHOOK_URL: ${{ vars.FINITYSTREAM_WEBHOOK_URL }}
+          FINITYSTREAM_WEBHOOK_URL: ${{ github.event_name == 'push' && secrets.FINITYSTREAM_WEBHOOK_URL }}
         run: |
           project=Jellyfin.Plugin.FinityStream.csproj
           if [[ "$GITHUB_EVENT_NAME" != push ]]; then
@@ -37,8 +37,8 @@ jobs:
           value = os.environ["FINITYSTREAM_WEBHOOK_URL"]
           if not value.strip():
               raise SystemExit(
-                  "Missing repository variable FINITYSTREAM_WEBHOOK_URL. "
-                  "Add it under Settings > Secrets and variables > Actions > Variables."
+                  "Missing repository secret FINITYSTREAM_WEBHOOK_URL. "
+                  "Add it under Settings > Secrets and variables > Actions > Secrets."
               )
           try:
               url = urlsplit(value)
