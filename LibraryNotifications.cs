@@ -87,7 +87,7 @@ internal sealed class LibraryNotifications(
 
     private void Enqueue(ItemChangeEventArgs args, string eventType)
     {
-        if (Plugin.Instance?.Configuration.Enabled != true || args.Item.Id == Guid.Empty)
+        if (Plugin.Instance?.Configuration is not { Enabled: true } config || args.Item.Id == Guid.Empty)
         {
             return;
         }
@@ -98,7 +98,17 @@ internal sealed class LibraryNotifications(
             Episode => "Episode",
             _ => args.Item.GetType().Name,
         };
-        if (!_events.Writer.TryWrite(new(args.Item.Id, itemType, eventType, Guid.NewGuid())))
+        var notify = itemType switch
+        {
+            "Movie" => config.NotifyMovies,
+            "Episode" => config.NotifyEpisodes,
+            _ => false,
+        };
+        var seasonId = config.GroupEpisodes && args.Item is Episode episode && episode.SeasonId != Guid.Empty
+            ? episode.SeasonId.ToString("N")
+            : null;
+
+        if (!_events.Writer.TryWrite(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify)))
         {
             logger.LogWarning("FinityStream webhook queue is full");
         }
@@ -114,6 +124,8 @@ internal sealed class LibraryNotifications(
             NotificationType = item.EventType,
             EventId = item.EventId.ToString("N"),
             ItemType = item.Type,
+            item.SeasonId,
+            item.Notify,
         };
 
         for (var attempt = 0; attempt < 4; attempt++)
@@ -200,5 +212,5 @@ internal sealed class LibraryNotifications(
         value.Length is >= 32 and <= 128
         && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
-    private sealed record LibraryEvent(Guid Id, string Type, string EventType, Guid EventId);
+    private sealed record LibraryEvent(Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify);
 }

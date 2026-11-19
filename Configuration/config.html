@@ -12,7 +12,19 @@
             <form id="FinityStreamNotificationsForm">
                 <label class="checkboxContainer">
                     <input id="FinityStreamEnabled" type="checkbox" is="emby-checkbox">
-                    <span>Send notifications for new movies and episodes</span>
+                    <span>Enable FinityStream notifications</span>
+                </label>
+                <label class="checkboxContainer">
+                    <input id="FinityStreamNotifyMovies" type="checkbox" is="emby-checkbox">
+                    <span>Show alerts for new movies</span>
+                </label>
+                <label class="checkboxContainer">
+                    <input id="FinityStreamNotifyEpisodes" type="checkbox" is="emby-checkbox">
+                    <span>Show alerts for new episodes</span>
+                </label>
+                <label class="checkboxContainer">
+                    <input id="FinityStreamGroupEpisodes" type="checkbox" is="emby-checkbox">
+                    <span>Group episodes added to the same season within three minutes</span>
                 </label>
                 <p id="FinityStreamStatus" role="status"></p>
                 <button id="FinityStreamSave" is="emby-button" type="submit" class="raised button-submit block" disabled>Save</button>
@@ -24,6 +36,9 @@
             const pluginId = 'f8faee20-de25-47cc-b2d0-6413e3d78673';
             const page = document.querySelector('#FinityStreamNotificationsPage');
             const enabled = page.querySelector('#FinityStreamEnabled');
+            const options = ['NotifyMovies', 'NotifyEpisodes', 'GroupEpisodes'].map(key => [
+                key, page.querySelector('#FinityStream' + key)
+            ]);
             const status = page.querySelector('#FinityStreamStatus');
             const save = page.querySelector('#FinityStreamSave');
             let config;
@@ -35,6 +50,9 @@
                 try {
                     config = await window.ApiClient.getPluginConfiguration(pluginId);
                     enabled.checked = config.Enabled;
+                    for (const [key, input] of options) {
+                        input.checked = config[key] ?? true;
+                    }
                     save.disabled = false;
                 } catch {
                     status.textContent = 'Could not load plugin settings.';
@@ -45,6 +63,9 @@
                 event.preventDefault();
                 save.disabled = true;
                 const next = { ...config, Enabled: enabled.checked };
+                for (const [key, input] of options) {
+                    next[key] = input.checked;
+                }
                 try {
                     await window.ApiClient.updatePluginConfiguration(pluginId, next);
                     config = next;
