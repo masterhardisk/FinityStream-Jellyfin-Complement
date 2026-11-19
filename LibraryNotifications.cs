@@ -93,7 +93,7 @@ internal sealed class LibraryNotifications(
         var notify = itemType switch
         {
             "Movie" => config.NotifyMovies,
-            "Episode" => config.NotifyEpisodes,
+            "Series" or "Episode" => config.NotifyEpisodes,
             _ => false,
         };
         var seasonId = config.GroupEpisodes && args.Item is Episode episode && episode.SeasonId != Guid.Empty

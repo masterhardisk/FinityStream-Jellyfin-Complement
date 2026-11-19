@@ -45,7 +45,7 @@ public sealed class DeviceEnrollmentController : ControllerBase
         using var request = new HttpRequestMessage(
             HttpMethod.Put, new Uri(LibraryNotifications.ServiceUrl, $"v1/servers/{id}/devices"))
         {
-            Content = JsonContent.Create(new { token = device.Token }),
+            Content = JsonContent.Create(new { token = device.Token, silent_only = device.SilentOnly }),
         };
         request.Headers.Add("X-Device-Secret", ownerSecret);
         request.Headers.Add("X-Enrollment-Secret", config.EnrollmentSecret);
@@ -65,5 +65,6 @@ public sealed class DeviceEnrollmentController : ControllerBase
     }
 
     public sealed record DeviceRegistration(
-        [Required, RegularExpression(@"^(?:[0-9a-fA-F]{2}){16,100}$")] string Token);
+        [Required, RegularExpression(@"^(?:[0-9a-fA-F]{2}){16,100}$")] string Token,
+        [property: System.Text.Json.Serialization.JsonPropertyName("silent_only")] bool? SilentOnly);
 }
