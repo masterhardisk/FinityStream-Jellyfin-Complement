@@ -36,6 +36,7 @@ jobs:
           PLUGIN_VERSION: ${{ steps.build.outputs.tag }}
         run: |
           mkdir dist
+          cp icon.png dist/icon.png
           zip -j dist/FinityStreamNotifications.zip bin/Release/net9.0/Jellyfin.Plugin.FinityStream.dll
           python3 - <<'PY'
           import hashlib
@@ -54,6 +55,7 @@ jobs:
               "overview": "Push notifications for FinityStream",
               "owner": os.environ["GITHUB_REPOSITORY_OWNER"],
               "category": "Notifications",
+              "imageUrl": f"{repo}/releases/download/{tag}/icon.png",
               "versions": [{
                   "version": tag[1:],
                   "targetAbi": "10.11.0.0",
