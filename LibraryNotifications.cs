@@ -1,3 +1,4 @@
+using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using System.Net;
@@ -100,7 +101,12 @@ internal sealed class LibraryNotifications(
             ? episode.SeasonId.ToString("N")
             : null;
 
-        QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify));
+        var episodeInfo = args.Item as Episode;
+        var seriesId = episodeInfo is not null && episodeInfo.SeriesId != Guid.Empty
+            ? episodeInfo.SeriesId.ToString("N")
+            : null;
+        QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify,
+            LimitTitle(args.Item.Name), seriesId, LimitTitle(episodeInfo?.SeriesName)));
     }
 
     internal void EnqueueArtworkChange(Guid itemId)
@@ -131,6 +137,9 @@ internal sealed class LibraryNotifications(
             ItemType = item.Type,
             item.SeasonId,
             item.Notify,
+            item.Title,
+            item.SeriesId,
+            item.SeriesTitle,
         };
 
         for (var attempt = 0; attempt < 4; attempt++)
@@ -245,5 +254,10 @@ internal sealed class LibraryNotifications(
         value.Length is >= 32 and <= 128
         && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
-    private sealed record LibraryEvent(Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify);
+    private static string? LimitTitle(string? value) =>
+        value is { Length: > 150 } ? string.Concat(value.EnumerateRunes().Take(150).Select(rune => rune.ToString())) : value;
+
+    private sealed record LibraryEvent(
+        Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify,
+        string? Title = null, string? SeriesId = null, string? SeriesTitle = null);
 }
