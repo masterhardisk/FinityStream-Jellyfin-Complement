@@ -15,7 +15,7 @@ El catálogo estará disponible cuando se publique la primera versión en GitHub
 Para recibir avisos necesitas una versión de FinityStream compatible con el registro de dispositivos. Esta versión del complemento entrega los eventos a la API. El registro desde la app queda pendiente de verificar.
 
 1. Pide a quien administre la API de FinityStream el **secreto de webhook** y el **secreto de registro** de tu servidor. Si administras tu propia API, consulta el apartado siguiente.
-2. En Jellyfin, abre **Panel de control → Complementos → FinityStream Notifications**. Introduce el secreto de webhook. El destino de producción viene incorporado en el complemento. Activa los avisos y guarda.
+2. En Jellyfin, abre **Panel de control → Complementos → FinityStream Notifications**. Introduce la URL HTTPS completa del webhook de tu API y el secreto de webhook. Activa los avisos y guarda.
 3. En FinityStream, habilita los avisos para ese Jellyfin y registra el dispositivo mediante el secreto de registro. El complemento comienza a enviar eventos cuando se añade contenido nuevo.
 
 El secreto de webhook se usa solo en Jellyfin. El de registro autoriza vincular dispositivos a ese servidor. Compártelos de forma privada. Si gestionas varios Jellyfin, cada uno tiene sus propias credenciales.
@@ -28,7 +28,7 @@ Consulta `/System/Info/Public` en tu Jellyfin y copia el campo `Id`. En el direc
 docker compose exec notifications python -m app.provision ID_DE_JELLYFIN
 ```
 
-El comando genera los dos secretos. El complemento utiliza el destino HTTPS definido al compilar la release.
+El comando genera los dos secretos. Guarda la URL de tu API en los ajustes del complemento. Si actualizas desde una versión anterior, añade la URL en Jellyfin y guarda los ajustes.
 
 ### Comprobar que funciona
 
@@ -45,11 +45,8 @@ La API deduplica los eventos, almacena las entregas pendientes en MySQL y envía
 Con el SDK .NET 9, ejecuta desde la raíz del complemento:
 
 ```sh
-export FINITYSTREAM_WEBHOOK_URL='https://TU_DOMINIO/ruta/del/webhook'
 dotnet build Jellyfin.Plugin.FinityStream.csproj -c Release
 ```
-
-En **Settings → Secrets and variables → Actions → Secrets**, crea `FINITYSTREAM_WEBHOOK_URL` con la URL HTTPS completa del webhook. La URL se incorpora al DLL y es pública. Cada secreto de webhook se configura por servidor en Jellyfin.
 
 El workflow de GitHub Actions compila las pull requests. Al subir o integrar cambios en `main`, calcula la versión con el número de ejecución. Después de compilar, crea el tag para ese commit y publica el ZIP y el manifiesto en GitHub Releases. Reejecutar el mismo workflow conserva la versión. La URL que se añade al catálogo es:
 

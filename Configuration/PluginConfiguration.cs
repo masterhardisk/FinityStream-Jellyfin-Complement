@@ -6,5 +6,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public bool Enabled { get; set; }
 
+    public string WebhookUrl { get; set; } = string.Empty;
+
     public string WebhookSecret { get; set; } = string.Empty;
 }

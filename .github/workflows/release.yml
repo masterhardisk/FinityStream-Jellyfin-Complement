@@ -21,8 +21,6 @@ jobs:
       - name: Build plugin
         id: build
         shell: bash
-        env:
-          FINITYSTREAM_WEBHOOK_URL: ${{ github.event_name == 'push' && secrets.FINITYSTREAM_WEBHOOK_URL }}
         run: |
           project=Jellyfin.Plugin.FinityStream.csproj
           if [[ "$GITHUB_EVENT_NAME" != push ]]; then
@@ -30,25 +28,6 @@ jobs:
             exit
           fi
 
-          python3 - <<'PY'
-          import os
-          from urllib.parse import urlsplit
-
-          value = os.environ["FINITYSTREAM_WEBHOOK_URL"]
-          if not value.strip():
-              raise SystemExit(
-                  "Missing repository secret FINITYSTREAM_WEBHOOK_URL. "
-                  "Add it under Settings > Secrets and variables > Actions > Secrets."
-              )
-          try:
-              url = urlsplit(value)
-          except ValueError:
-              raise SystemExit("Invalid syntax in FINITYSTREAM_WEBHOOK_URL") from None
-          if (url.scheme != "https" or not url.hostname or url.username is not None
-              or url.password is not None or not url.path or url.path == "/"
-              or "?" in value or "#" in value or any(c.isspace() for c in value)):
-              raise SystemExit("Invalid FINITYSTREAM_WEBHOOK_URL. Use a full HTTPS URL with a path, without quotes or spaces.")
-          PY
           version="0.1.$((GITHUB_RUN_NUMBER / 65535)).$((GITHUB_RUN_NUMBER % 65535))"
           dotnet build "$project" -c Release -p:Version="$version"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
