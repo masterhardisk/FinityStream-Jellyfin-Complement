@@ -24,7 +24,7 @@ public sealed class DeviceEnrollmentController : ControllerBase
         var id = await service.EnsureInstallationAsync(Http, cancellationToken);
         return id is null
             ? StatusCode(503)
-            : Ok(new { installationID = id, relayURL = LibraryNotifications.ServiceUrl });
+            : Ok(new { installationID = Guid.ParseExact(id, "N"), relayURL = LibraryNotifications.ServiceUrl });
     }
 
     [HttpPut("Installation/{installationId:guid}/Devices")]
