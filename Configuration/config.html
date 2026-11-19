@@ -18,12 +18,6 @@
                     <label for="FinityStreamWebhookUrl">Webhook URL</label>
                     <input id="FinityStreamWebhookUrl" type="url" is="emby-input">
                 </div>
-                <div class="inputContainer">
-                    <label for="FinityStreamSecret">Webhook secret</label>
-                    <input id="FinityStreamSecret" type="password" is="emby-input"
-                           autocomplete="new-password" maxlength="128">
-                    <div class="fieldDescription">Leave blank to keep the existing secret.</div>
-                </div>
                 <p id="FinityStreamStatus" role="status"></p>
                 <button id="FinityStreamSave" is="emby-button" type="submit" class="raised button-submit block" disabled>Save</button>
             </form>
@@ -35,7 +29,6 @@
             const page = document.querySelector('#FinityStreamNotificationsPage');
             const enabled = page.querySelector('#FinityStreamEnabled');
             const url = page.querySelector('#FinityStreamWebhookUrl');
-            const secret = page.querySelector('#FinityStreamSecret');
             const status = page.querySelector('#FinityStreamStatus');
             const save = page.querySelector('#FinityStreamSave');
             let config;
@@ -44,7 +37,6 @@
                 save.disabled = true;
                 config = undefined;
                 status.textContent = '';
-                secret.value = '';
                 try {
                     config = await window.ApiClient.getPluginConfiguration(pluginId);
                     enabled.checked = config.Enabled;
@@ -70,18 +62,11 @@
                         return;
                     }
                 }
-                const webhookSecret = secret.value.trim() || config.WebhookSecret;
-                if (enabled.checked && !/^[A-Za-z0-9_-]{32,128}$/.test(webhookSecret || '')) {
-                    status.textContent = 'Enter the secret issued by FinityStream.';
-                    return;
-                }
-
                 save.disabled = true;
-                const next = { ...config, Enabled: enabled.checked, WebhookUrl: webhookUrl, WebhookSecret: webhookSecret };
+                const next = { ...config, Enabled: enabled.checked, WebhookUrl: webhookUrl };
                 try {
                     await window.ApiClient.updatePluginConfiguration(pluginId, next);
                     config = next;
-                    secret.value = '';
                     status.textContent = 'Settings saved.';
                 } catch {
                     status.textContent = 'Could not save plugin settings.';

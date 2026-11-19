@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Threading.Channels;
@@ -30,6 +32,8 @@ internal sealed class LibraryNotifications(
         };
 
         library.ItemAdded += OnItemAdded;
+        library.ItemUpdated += OnItemUpdated;
+        library.ItemRemoved += OnItemRemoved;
         try
         {
             await foreach (var item in _events.Reader.ReadAllAsync(stoppingToken))
@@ -52,22 +56,44 @@ internal sealed class LibraryNotifications(
                     continue;
                 }
 
-                if (!IsValidSecret(config.WebhookSecret))
+                var serverId = host.SystemId;
+                if (!IsValidSecret(config.WebhookSecret) || config.EnrollmentSecret.Length > 0)
                 {
-                    logger.LogWarning("FinityStream webhook secret is invalid");
-                    continue;
+                    if (!IsValidSecret(config.WebhookSecret))
+                    {
+                        config.WebhookSecret = GenerateSecret();
+                        config.EnrollmentSecret = GenerateSecret();
+                        Plugin.Instance!.SaveConfiguration();
+                    }
+
+                    var installationId = await RegisterInstallationAsync(
+                        http, webhookUrl, config.WebhookSecret, config.EnrollmentSecret, stoppingToken);
+                    if (installationId is null)
+                    {
+                        continue;
+                    }
+
+                    serverId = installationId;
                 }
 
-                await SendAsync(http, webhookUrl, config.WebhookSecret, item, stoppingToken);
+                await SendAsync(http, webhookUrl, config.WebhookSecret, serverId, item, stoppingToken);
             }
         }
         finally
         {
             library.ItemAdded -= OnItemAdded;
+            library.ItemUpdated -= OnItemUpdated;
+            library.ItemRemoved -= OnItemRemoved;
         }
     }
 
-    private void OnItemAdded(object? sender, ItemChangeEventArgs args)
+    private void OnItemAdded(object? sender, ItemChangeEventArgs args) => Enqueue(args, "ItemAdded");
+
+    private void OnItemUpdated(object? sender, ItemChangeEventArgs args) => Enqueue(args, "ItemUpdated");
+
+    private void OnItemRemoved(object? sender, ItemChangeEventArgs args) => Enqueue(args, "ItemRemoved");
+
+    private void Enqueue(ItemChangeEventArgs args, string eventType)
     {
         if (Plugin.Instance?.Configuration.Enabled != true || args.Item.Id == Guid.Empty)
         {
@@ -78,22 +104,23 @@ internal sealed class LibraryNotifications(
         {
             Movie => "Movie",
             Episode => "Episode",
-            _ => null,
+            _ => args.Item.GetType().Name,
         };
-        if (itemType is not null && !_events.Writer.TryWrite(new(args.Item.Id, itemType)))
+        if (!_events.Writer.TryWrite(new(args.Item.Id, itemType, eventType, Guid.NewGuid())))
         {
             logger.LogWarning("FinityStream webhook queue is full");
         }
     }
 
     private async Task SendAsync(
-        HttpClient http, Uri webhookUrl, string secret, LibraryEvent item, CancellationToken cancellationToken)
+        HttpClient http, Uri webhookUrl, string secret, string serverId, LibraryEvent item, CancellationToken cancellationToken)
     {
         var payload = new
         {
-            ServerId = host.SystemId,
+            ServerId = serverId,
             ItemId = item.Id.ToString("N"),
-            NotificationType = "ItemAdded",
+            NotificationType = item.EventType,
+            EventId = item.EventId.ToString("N"),
             ItemType = item.Type,
         };
 
@@ -147,9 +174,53 @@ internal sealed class LibraryNotifications(
         logger.LogWarning("FinityStream webhook failed after four attempts for item {ItemId}", item.Id);
     }
 
+    private async Task<string?> RegisterInstallationAsync(
+        HttpClient http, Uri webhookUrl, string webhookSecret, string enrollmentSecret,
+        CancellationToken cancellationToken)
+    {
+        const string webhookSuffix = "/v1/webhooks/jellyfin";
+        if (!webhookUrl.AbsolutePath.EndsWith(webhookSuffix, StringComparison.Ordinal))
+        {
+            logger.LogWarning("FinityStream webhook URL must end in {Path} for automatic registration", webhookSuffix);
+            return null;
+        }
+
+        var registrationUrl = new UriBuilder(webhookUrl)
+        {
+            Path = webhookUrl.AbsolutePath[..^webhookSuffix.Length] + "/v1/installations",
+        }.Uri;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, registrationUrl);
+            request.Headers.Add("X-Webhook-Secret", webhookSecret);
+            request.Headers.Add("X-Enrollment-Secret", enrollmentSecret);
+            using var response = await http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("FinityStream automatic registration failed with HTTP {Status}", (int)response.StatusCode);
+                return null;
+            }
+
+            var installation = await response.Content.ReadFromJsonAsync<Installation>(cancellationToken);
+            return Guid.TryParse(installation?.ServerId, out var id) ? id.ToString("N") : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException
+            || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            logger.LogWarning("FinityStream automatic registration request failed");
+            return null;
+        }
+    }
+
+    private static string GenerateSecret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private sealed record Installation([property: JsonPropertyName("server_id")] string ServerId);
+
     private static bool IsValidSecret(string value) =>
         value.Length is >= 32 and <= 128
         && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
-    private sealed record LibraryEvent(Guid Id, string Type);
+    private sealed record LibraryEvent(Guid Id, string Type, string EventType, Guid EventId);
 }

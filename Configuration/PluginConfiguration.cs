@@ -8,5 +8,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     public string WebhookUrl { get; set; } = string.Empty;
 
+    public string EnrollmentSecret { get; set; } = string.Empty;
+
     public string WebhookSecret { get; set; } = string.Empty;
 }
