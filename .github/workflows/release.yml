@@ -1,0 +1,108 @@
+name: Build and publish plugin
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build plugin
+        id: build
+        shell: bash
+        env:
+          FINITYSTREAM_WEBHOOK_URL: ${{ vars.FINITYSTREAM_WEBHOOK_URL }}
+        run: |
+          project=Jellyfin.Plugin.FinityStream.csproj
+          if [[ "$GITHUB_EVENT_NAME" != push ]]; then
+            dotnet build "$project" -c Release
+            exit
+          fi
+
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          value = os.environ["FINITYSTREAM_WEBHOOK_URL"]
+          url = urlsplit(value)
+          if (url.scheme != "https" or not url.hostname or url.username is not None
+              or url.password is not None or not url.path or url.path == "/"
+              or "?" in value or "#" in value or any(c.isspace() for c in value)):
+              raise SystemExit("Set FINITYSTREAM_WEBHOOK_URL to the full HTTPS webhook URL")
+          PY
+          version="0.1.$((GITHUB_RUN_NUMBER / 65535)).$((GITHUB_RUN_NUMBER % 65535))"
+          dotnet build "$project" -c Release -p:Version="$version"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'push'
+        env:
+          PLUGIN_VERSION: ${{ steps.build.outputs.tag }}
+        run: |
+          mkdir dist
+          zip -j dist/FinityStreamNotifications.zip bin/Release/net9.0/Jellyfin.Plugin.FinityStream.dll
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          tag = os.environ["PLUGIN_VERSION"]
+          repo = f'{os.environ["GITHUB_SERVER_URL"]}/{os.environ["GITHUB_REPOSITORY"]}'
+          archive = Path("dist/FinityStreamNotifications.zip")
+          manifest = [{
+              "guid": "f8faee20-de25-47cc-b2d0-6413e3d78673",
+              "name": "FinityStream Notifications",
+              "description": "Sends new movie and episode events to the FinityStream Notifications API.",
+              "overview": "Push notifications for FinityStream",
+              "owner": os.environ["GITHUB_REPOSITORY_OWNER"],
+              "category": "Notifications",
+              "versions": [{
+                  "version": tag[1:],
+                  "targetAbi": "10.11.0.0",
+                  "sourceUrl": f"{repo}/releases/download/{tag}/{archive.name}",
+                  "checksum": hashlib.md5(archive.read_bytes(), usedforsecurity=False).hexdigest(),
+                  "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  "changelog": f"See {repo}/releases/tag/{tag}",
+              }],
+          }]
+          Path("dist/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-release
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jellyfin-release
+          path: dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --generate-notes --latest

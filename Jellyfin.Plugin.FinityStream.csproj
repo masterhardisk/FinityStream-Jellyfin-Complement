@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" ExcludeAssets="runtime" />
+    <AssemblyMetadata Include="FinityStreamWebhookUrl" Value="$(FINITYSTREAM_WEBHOOK_URL)"
+                      Condition="'$(FINITYSTREAM_WEBHOOK_URL)' != ''" />
+    <EmbeddedResource Include="Configuration/config.html" />
+  </ItemGroup>
+</Project>

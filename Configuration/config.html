@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>FinityStream Notifications</title>
+</head>
+<body>
+<div id="FinityStreamNotificationsPage" data-role="page" class="page type-interior pluginConfigurationPage">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2>FinityStream Notifications</h2>
+            <form id="FinityStreamNotificationsForm">
+                <label class="checkboxContainer">
+                    <input id="FinityStreamEnabled" type="checkbox" is="emby-checkbox">
+                    <span>Send notifications for new movies and episodes</span>
+                </label>
+                <div class="inputContainer">
+                    <label for="FinityStreamSecret">Webhook secret</label>
+                    <input id="FinityStreamSecret" type="password" is="emby-input"
+                           autocomplete="new-password" maxlength="128">
+                    <div class="fieldDescription">Leave blank to keep the existing secret.</div>
+                </div>
+                <p id="FinityStreamStatus" role="status"></p>
+                <button id="FinityStreamSave" is="emby-button" type="submit" class="raised button-submit block" disabled>Save</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        (() => {
+            const pluginId = 'f8faee20-de25-47cc-b2d0-6413e3d78673';
+            const page = document.querySelector('#FinityStreamNotificationsPage');
+            const enabled = page.querySelector('#FinityStreamEnabled');
+            const secret = page.querySelector('#FinityStreamSecret');
+            const status = page.querySelector('#FinityStreamStatus');
+            const save = page.querySelector('#FinityStreamSave');
+            let config;
+
+            page.addEventListener('pageshow', async () => {
+                save.disabled = true;
+                config = undefined;
+                status.textContent = '';
+                secret.value = '';
+                try {
+                    config = await window.ApiClient.getPluginConfiguration(pluginId);
+                    enabled.checked = config.Enabled;
+                    save.disabled = false;
+                } catch {
+                    status.textContent = 'Could not load plugin settings.';
+                }
+            });
+
+            page.querySelector('form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const webhookSecret = secret.value.trim() || config.WebhookSecret;
+                if (enabled.checked && !/^[A-Za-z0-9_-]{32,128}$/.test(webhookSecret || '')) {
+                    status.textContent = 'Enter the secret issued by FinityStream.';
+                    return;
+                }
+
+                save.disabled = true;
+                const next = { ...config, Enabled: enabled.checked, WebhookSecret: webhookSecret };
+                try {
+                    await window.ApiClient.updatePluginConfiguration(pluginId, next);
+                    config = next;
+                    secret.value = '';
+                    status.textContent = 'Settings saved.';
+                } catch {
+                    status.textContent = 'Could not save plugin settings.';
+                } finally {
+                    save.disabled = false;
+                }
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>
