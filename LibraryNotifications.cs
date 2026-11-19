@@ -100,7 +100,20 @@ internal sealed class LibraryNotifications(
             ? episode.SeasonId.ToString("N")
             : null;
 
-        if (!_events.Writer.TryWrite(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify)))
+        QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify));
+    }
+
+    internal void EnqueueArtworkChange(Guid itemId)
+    {
+        if (itemId != Guid.Empty && Plugin.Instance?.Configuration.Enabled == true)
+        {
+            QueueEvent(new(itemId, "Artwork", "LibraryChanged", Guid.NewGuid(), null, false));
+        }
+    }
+
+    private void QueueEvent(LibraryEvent item)
+    {
+        if (!_events.Writer.TryWrite(item))
         {
             logger.LogWarning("FinityStream webhook queue is full");
         }
