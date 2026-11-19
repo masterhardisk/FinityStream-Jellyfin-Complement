@@ -17,7 +17,7 @@ internal sealed class LibraryNotifications(
     IServerApplicationHost host,
     ILogger<LibraryNotifications> logger) : BackgroundService
 {
-    private static readonly Uri ServiceUrl = new("https://finitystream.gerardcontador.com/");
+    internal static readonly Uri ServiceUrl = new("https://finitystream.gerardcontador.com/");
     private static readonly Uri WebhookUrl = new(ServiceUrl, "v1/webhooks/jellyfin");
     private static readonly Uri RegistrationUrl = new(ServiceUrl, "v1/installations");
 
@@ -51,15 +51,7 @@ internal sealed class LibraryNotifications(
                 var serverId = host.SystemId;
                 if (!IsValidSecret(config.WebhookSecret) || config.EnrollmentSecret.Length > 0)
                 {
-                    if (!IsValidSecret(config.WebhookSecret))
-                    {
-                        config.WebhookSecret = GenerateSecret();
-                        config.EnrollmentSecret = GenerateSecret();
-                        Plugin.Instance!.SaveConfiguration();
-                    }
-
-                    var installationId = await RegisterInstallationAsync(
-                        http, config.WebhookSecret, config.EnrollmentSecret, stoppingToken);
+                    var installationId = await EnsureInstallationAsync(http, stoppingToken);
                     if (installationId is null)
                     {
                         continue;
@@ -174,6 +166,34 @@ internal sealed class LibraryNotifications(
         }
 
         logger.LogWarning("FinityStream webhook failed after four attempts for item {ItemId}", item.Id);
+    }
+
+    private readonly SemaphoreSlim _registrationLock = new(1);
+
+    internal async Task<string?> EnsureInstallationAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        await _registrationLock.WaitAsync(cancellationToken);
+        try
+        {
+            var plugin = Plugin.Instance;
+            if (plugin?.Configuration is not { Enabled: true } config)
+            {
+                return null;
+            }
+            if (!IsValidSecret(config.WebhookSecret))
+            {
+                config.WebhookSecret = GenerateSecret();
+                config.EnrollmentSecret = GenerateSecret();
+                plugin.SaveConfiguration();
+            }
+            return config.EnrollmentSecret.Length == 43
+                ? await RegisterInstallationAsync(http, config.WebhookSecret, config.EnrollmentSecret, cancellationToken)
+                : null;
+        }
+        finally
+        {
+            _registrationLock.Release();
+        }
     }
 
     private async Task<string?> RegisterInstallationAsync(

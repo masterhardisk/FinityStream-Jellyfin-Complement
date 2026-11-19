@@ -8,6 +8,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        serviceCollection.AddHostedService<LibraryNotifications>();
+        serviceCollection.AddSingleton<LibraryNotifications>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<LibraryNotifications>());
     }
 }
