@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Reflection;
 using System.Threading.Channels;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities.Movies;
@@ -16,25 +15,11 @@ internal sealed class LibraryNotifications(
     IServerApplicationHost host,
     ILogger<LibraryNotifications> logger) : BackgroundService
 {
-    private static readonly string? ConfiguredWebhookUrl = typeof(LibraryNotifications).Assembly
-        .GetCustomAttributes<AssemblyMetadataAttribute>()
-        .SingleOrDefault(attribute => attribute.Key == "FinityStreamWebhookUrl")?.Value;
-
     private readonly Channel<LibraryEvent> _events = Channel.CreateBounded<LibraryEvent>(
         new BoundedChannelOptions(1024) { SingleReader = true });
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!Uri.TryCreate(ConfiguredWebhookUrl, UriKind.Absolute, out var webhookUrl)
-            || webhookUrl.Scheme != Uri.UriSchemeHttps
-            || !string.IsNullOrEmpty(webhookUrl.UserInfo)
-            || !string.IsNullOrEmpty(webhookUrl.Query)
-            || !string.IsNullOrEmpty(webhookUrl.Fragment))
-        {
-            logger.LogWarning("FinityStream webhook URL is missing or invalid in this build");
-            return;
-        }
-
         using var http = new HttpClient(new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
@@ -52,6 +37,18 @@ internal sealed class LibraryNotifications(
                 var config = Plugin.Instance?.Configuration;
                 if (config?.Enabled != true)
                 {
+                    continue;
+                }
+
+                if (!Uri.TryCreate(config.WebhookUrl, UriKind.Absolute, out var webhookUrl)
+                    || webhookUrl.Scheme != Uri.UriSchemeHttps
+                    || string.IsNullOrEmpty(webhookUrl.Host)
+                    || webhookUrl.AbsolutePath == "/"
+                    || !string.IsNullOrEmpty(webhookUrl.UserInfo)
+                    || !string.IsNullOrEmpty(webhookUrl.Query)
+                    || !string.IsNullOrEmpty(webhookUrl.Fragment))
+                {
+                    logger.LogWarning("FinityStream webhook URL is missing or invalid in plugin settings");
                     continue;
                 }
 
@@ -104,7 +101,9 @@ internal sealed class LibraryNotifications(
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Plugin.Instance?.Configuration is not { Enabled: true } current
-                || current.WebhookSecret != secret)
+                || current.WebhookSecret != secret
+                || !Uri.TryCreate(current.WebhookUrl, UriKind.Absolute, out var currentUrl)
+                || currentUrl != webhookUrl)
             {
                 return;
             }
