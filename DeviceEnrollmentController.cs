@@ -189,58 +189,37 @@ public sealed class DeviceEnrollmentController : ControllerBase
             return new JsonResult("expired");
         }
 
-        await pending.Gate.WaitAsync(cancellationToken);
-        try
+        var state = await pending.ResolveAsync(approve, async () =>
         {
-            if (pending.Approved)
-            {
-                return new JsonResult("alreadyApproved");
-            }
-
             if (Plugin.Instance?.Configuration is not { Enabled: true })
             {
-                return new JsonResult("expired");
+                return "expired";
             }
 
             var quickConnect = HttpContext.RequestServices.GetRequiredService<IQuickConnect>();
             try
             {
-                var state = quickConnect.CheckRequestStatus(pending.Secret);
-                if (state.Authenticated)
+                var request = quickConnect.CheckRequestStatus(pending.Secret);
+                if (request.Authenticated)
                 {
-                    return new JsonResult("alreadyApproved");
+                    return "alreadyApproved";
                 }
-                if (state.Code != code || state.DateAdded < DateTime.UtcNow.AddMinutes(-2))
+                if (request.Code != code || request.DateAdded < DateTime.UtcNow.AddMinutes(-2))
                 {
-                    return new JsonResult("expired");
+                    return "expired";
                 }
                 if (!approve)
                 {
-                    return new JsonResult("pending");
+                    return "pending";
                 }
-                if (await quickConnect.AuthorizeRequest(userId, code))
-                {
-                    pending.Approved = true;
-                    return new JsonResult("approved");
-                }
-                return new JsonResult("expired");
+                return await quickConnect.AuthorizeRequest(userId, code) ? "approved" : "expired";
             }
             catch (ResourceNotFoundException)
             {
-                return new JsonResult("expired");
+                return "expired";
             }
-        }
-        finally
-        {
-            pending.Gate.Release();
-        }
-    }
-
-    private sealed class PendingSignIn(string secret)
-    {
-        public string Secret { get; } = secret;
-        public SemaphoreSlim Gate { get; } = new(1, 1);
-        public bool Approved { get; set; }
+        }, cancellationToken);
+        return new JsonResult(state);
     }
 
     public sealed record SignInRequest(
