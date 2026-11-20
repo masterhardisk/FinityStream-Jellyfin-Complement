@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
+      - name: Run plugin tests
+        run: dotnet test tests/FinityStream.Plugin.Tests.csproj -c Release
       - name: Build plugin
         id: build
         shell: bash
