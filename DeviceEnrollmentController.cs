@@ -8,6 +8,7 @@ using MediaBrowser.Controller.QuickConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Jellyfin.Plugin.FinityStream;
 
@@ -21,6 +22,9 @@ public sealed class DeviceEnrollmentController : ControllerBase
     {
         Timeout = TimeSpan.FromSeconds(10),
     };
+
+    private static readonly MemoryCache SignIns = new(new MemoryCacheOptions { SizeLimit = 2048 });
+    private static readonly object SignInCacheLock = new();
 
     [HttpGet("Installation")]
     public async Task<IActionResult> GetInstallation(CancellationToken cancellationToken)
@@ -120,6 +124,12 @@ public sealed class DeviceEnrollmentController : ControllerBase
             return StatusCode(503);
         }
 
+        var requestKey = (user.Id, pending.Code);
+        if (SignIns.TryGetValue(requestKey, out PendingSignIn? existing) && existing?.Secret != input.Secret)
+        {
+            return Conflict();
+        }
+
         // The relay needs a stable deduplication identifier, never the Quick Connect secret.
         var requestId = new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(input.Secret)).AsSpan(0, 16));
         using var request = new HttpRequestMessage(
@@ -131,7 +141,23 @@ public sealed class DeviceEnrollmentController : ControllerBase
         try
         {
             using var response = await Http.SendAsync(request, cancellationToken);
-            return response.IsSuccessStatusCode ? Accepted(true) : StatusCode((int)response.StatusCode == 429 ? 429 : 502);
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode((int)response.StatusCode == 429 ? 429 : 502);
+            }
+
+            lock (SignInCacheLock)
+            {
+                if (!SignIns.TryGetValue(requestKey, out PendingSignIn? _))
+                {
+                    SignIns.Set(requestKey, new PendingSignIn(input.Secret), new MemoryCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(3),
+                        Size = 1,
+                    });
+                }
+            }
+            return Accepted(true);
         }
         catch (HttpRequestException)
         {
@@ -141,6 +167,80 @@ public sealed class DeviceEnrollmentController : ControllerBase
         {
             return StatusCode(504);
         }
+    }
+
+    [HttpGet("SignIn/{code}")]
+    public Task<IActionResult> GetSignInStatus(string code, CancellationToken cancellationToken) =>
+        ResolveSignIn(code, approve: false, cancellationToken);
+
+    [HttpPost("SignIn/{code}")]
+    public Task<IActionResult> ApproveSignIn(string code, CancellationToken cancellationToken) =>
+        ResolveSignIn(code, approve: true, cancellationToken);
+
+    private async Task<IActionResult> ResolveSignIn(string code, bool approve, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(User.FindFirst("Jellyfin-UserId")?.Value, out var userId) || userId == Guid.Empty)
+        {
+            return Forbid();
+        }
+
+        if (!SignIns.TryGetValue((userId, code), out PendingSignIn? pending) || pending is null)
+        {
+            return new JsonResult("expired");
+        }
+
+        await pending.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (pending.Approved)
+            {
+                return new JsonResult("alreadyApproved");
+            }
+
+            if (Plugin.Instance?.Configuration is not { Enabled: true })
+            {
+                return new JsonResult("expired");
+            }
+
+            var quickConnect = HttpContext.RequestServices.GetRequiredService<IQuickConnect>();
+            try
+            {
+                var state = quickConnect.CheckRequestStatus(pending.Secret);
+                if (state.Authenticated)
+                {
+                    return new JsonResult("alreadyApproved");
+                }
+                if (state.Code != code || state.DateAdded < DateTime.UtcNow.AddMinutes(-2))
+                {
+                    return new JsonResult("expired");
+                }
+                if (!approve)
+                {
+                    return new JsonResult("pending");
+                }
+                if (await quickConnect.AuthorizeRequest(userId, code))
+                {
+                    pending.Approved = true;
+                    return new JsonResult("approved");
+                }
+                return new JsonResult("expired");
+            }
+            catch (ResourceNotFoundException)
+            {
+                return new JsonResult("expired");
+            }
+        }
+        finally
+        {
+            pending.Gate.Release();
+        }
+    }
+
+    private sealed class PendingSignIn(string secret)
+    {
+        public string Secret { get; } = secret;
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+        public bool Approved { get; set; }
     }
 
     public sealed record SignInRequest(
