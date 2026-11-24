@@ -8,6 +8,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -41,28 +42,10 @@ internal sealed class LibraryNotifications(
         library.ItemRemoved += OnItemRemoved;
         try
         {
-            await foreach (var item in _events.Reader.ReadAllAsync(stoppingToken))
-            {
-                var config = Plugin.Instance?.Configuration;
-                if (config?.Enabled != true)
-                {
-                    continue;
-                }
-
-                var serverId = host.SystemId;
-                if (!IsValidSecret(config.WebhookSecret) || config.EnrollmentSecret.Length > 0)
-                {
-                    var installationId = await EnsureInstallationAsync(http, stoppingToken);
-                    if (installationId is null)
-                    {
-                        continue;
-                    }
-
-                    serverId = installationId;
-                }
-
-                await SendAsync(http, config.WebhookSecret, serverId, item, stoppingToken);
-            }
+            await Parallel.ForEachAsync(
+                _events.Reader.ReadAllAsync(stoppingToken),
+                new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = stoppingToken },
+                async (item, cancellationToken) => await ProcessEventAsync(http, item, cancellationToken));
         }
         finally
         {
@@ -70,6 +53,63 @@ internal sealed class LibraryNotifications(
             library.ItemUpdated -= OnItemUpdated;
             library.ItemRemoved -= OnItemRemoved;
         }
+    }
+
+    private async Task ProcessEventAsync(HttpClient http, LibraryEvent item, CancellationToken cancellationToken)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config?.Enabled != true)
+        {
+            return;
+        }
+
+        if (item.EventType == "ItemAdded" && item.Notify)
+        {
+            await WaitForPrimaryArtworkAsync(item, cancellationToken);
+        }
+
+        config = Plugin.Instance?.Configuration;
+        if (config?.Enabled != true)
+        {
+            return;
+        }
+
+        var serverId = host.SystemId;
+        if (!IsValidSecret(config.WebhookSecret) || config.EnrollmentSecret.Length > 0)
+        {
+            var installationId = await EnsureInstallationAsync(http, cancellationToken);
+            if (installationId is null)
+            {
+                return;
+            }
+
+            serverId = installationId;
+        }
+
+        await SendAsync(http, config.WebhookSecret, serverId, item, cancellationToken);
+    }
+
+    private async Task WaitForPrimaryArtworkAsync(LibraryEvent item, CancellationToken cancellationToken)
+    {
+        var artworkId = item.Type == "Episode" && Guid.TryParseExact(item.SeriesId, "N", out var seriesId)
+            ? seriesId
+            : item.Id;
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(10);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (library.GetItemById(artworkId)?.HasImage(ImageType.Primary, 0) == true)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
+        }
+
+        logger.LogWarning(
+            "No primary artwork became available for Jellyfin item {ItemId} within ten minutes; sending its notification anyway",
+            item.Id);
     }
 
     private void OnItemAdded(object? sender, ItemChangeEventArgs args) => Enqueue(args, "ItemAdded");

@@ -20,7 +20,7 @@ El catálogo mostrará el complemento cuando GitHub Actions publique la primera 
 
 Abre **Panel de control → Complementos → FinityStream Notifications**, activa los avisos y pulsa **Save**. El complemento se conecta automáticamente al servicio de FinityStream.
 
-Puedes elegir si quieres avisos visibles por películas y episodios. La opción de agrupar episodios espera tres minutos desde el primer episodio y reúne las altas de la misma temporada en un solo aviso.
+Puedes elegir si quieres avisos visibles por películas y episodios. Antes de enviar un aviso visible, el complemento espera a que Jellyfin reporte una imagen principal para el elemento (o para la serie en el caso de un episodio). Si Jellyfin no obtiene una imagen en diez minutos, el aviso se envía igualmente. La opción de agrupar episodios espera tres minutos desde el primer episodio y reúne las altas en un solo aviso.
 
 ## 3. Prueba una notificación
 
