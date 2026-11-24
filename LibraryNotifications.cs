@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Threading.Channels;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -65,7 +66,7 @@ internal sealed class LibraryNotifications(
 
         if (item.EventType == "ItemAdded" && item.Notify)
         {
-            await WaitForPrimaryArtworkAsync(item, cancellationToken);
+            item = await WaitForPrimaryArtworkAsync(item, cancellationToken);
         }
 
         config = Plugin.Instance?.Configuration;
@@ -89,27 +90,50 @@ internal sealed class LibraryNotifications(
         await SendAsync(http, config.WebhookSecret, serverId, item, cancellationToken);
     }
 
-    private async Task WaitForPrimaryArtworkAsync(LibraryEvent item, CancellationToken cancellationToken)
+    private async Task<LibraryEvent> WaitForPrimaryArtworkAsync(
+        LibraryEvent item, CancellationToken cancellationToken)
     {
-        var artworkId = item.Type == "Episode" && Guid.TryParseExact(item.SeriesId, "N", out var seriesId)
-            ? seriesId
-            : item.Id;
         var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(10);
 
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (library.GetItemById(artworkId)?.HasImage(ImageType.Primary, 0) == true)
+            var current = library.GetItemById(item.Id);
+            BaseItem? artworkItem = current;
+            if (current is Episode episode)
             {
-                return;
+                var seriesId = episode.SeriesId;
+                var series = seriesId == Guid.Empty ? null : library.GetItemById(seriesId);
+                item = item with
+                {
+                    Title = LimitTitle(episode.Name),
+                    SeriesId = seriesId == Guid.Empty ? null : seriesId.ToString("N"),
+                    SeriesTitle = LimitTitle(episode.SeriesName ?? series?.Name),
+                    SeasonId = item.SeasonId is null && Plugin.Instance?.Configuration.GroupEpisodes == true
+                        && episode.SeasonId != Guid.Empty ? episode.SeasonId.ToString("N") : item.SeasonId,
+                };
+
+                // Episode alerts use the series poster. Do not fall back to an episode still
+                // while Jellyfin is still resolving the episode's series relationship.
+                artworkItem = series;
+            }
+            else if (current is not null)
+            {
+                item = item with { Title = LimitTitle(current.Name) };
+            }
+
+            if (artworkItem?.HasImage(ImageType.Primary, 0) == true)
+            {
+                return item;
             }
 
             await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
         }
 
         logger.LogWarning(
-            "No primary artwork became available for Jellyfin item {ItemId} within ten minutes; sending its notification anyway",
+            "No series or item primary artwork became available for Jellyfin item {ItemId} within ten minutes; sending its notification anyway",
             item.Id);
+        return item;
     }
 
     private void OnItemAdded(object? sender, ItemChangeEventArgs args) => Enqueue(args, "ItemAdded");
