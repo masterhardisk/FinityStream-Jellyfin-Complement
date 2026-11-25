@@ -181,6 +181,15 @@ internal sealed class LibraryNotifications(
         }
     }
 
+    internal void EnqueueUserChange(Guid userId)
+    {
+        if (userId != Guid.Empty && Plugin.Instance?.Configuration.Enabled == true)
+        {
+            QueueEvent(new(userId, "User", "UserChanged", Guid.NewGuid(), null, false,
+                UserId: userId.ToString("N")));
+        }
+    }
+
     private void QueueEvent(LibraryEvent item)
     {
         if (!_events.Writer.TryWrite(item))
@@ -204,6 +213,7 @@ internal sealed class LibraryNotifications(
             item.Title,
             item.SeriesId,
             item.SeriesTitle,
+            item.UserId,
         };
 
         for (var attempt = 0; attempt < 4; attempt++)
@@ -323,5 +333,5 @@ internal sealed class LibraryNotifications(
 
     private sealed record LibraryEvent(
         Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify,
-        string? Title = null, string? SeriesId = null, string? SeriesTitle = null);
+        string? Title = null, string? SeriesId = null, string? SeriesTitle = null, string? UserId = null);
 }

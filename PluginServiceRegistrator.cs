@@ -11,6 +11,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<LibraryNotifications>();
         serviceCollection.AddScoped<ArtworkChangeFilter>();
+        serviceCollection.AddScoped<UserChangeFilter>();
+        serviceCollection.Configure<MvcOptions>(options => options.Filters.AddService<UserChangeFilter>());
         serviceCollection.Configure<MvcOptions>(options => options.Filters.AddService<ArtworkChangeFilter>());
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<LibraryNotifications>());
     }
