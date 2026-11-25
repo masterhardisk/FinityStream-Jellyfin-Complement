@@ -47,3 +47,5 @@ GitHub Actions compila las pull requests. Cada push a `main` genera una versión
 ### Cómo se entregan los avisos
 
 El complemento escucha las altas, modificaciones y eliminaciones de la biblioteca, pone los avisos en una cola en memoria y reintenta los fallos transitorios. Reiniciar Jellyfin puede descartar eventos que sigan en esa cola.
+
+Las peticiones POST, PUT, PATCH y DELETE correctas de usuarios autenticados también generan una actualización silenciosa para los dispositivos de su cuenta, incluidas las acciones de Jellyfin Enhanced. Se excluyen las rutas de registro y acceso de FinityStream para evitar avisos por registrar dispositivos. Requiere la migración `007_user_changes.sql` del servicio de notificaciones. Los clientes deben refrescar sus datos al recibir el push.
