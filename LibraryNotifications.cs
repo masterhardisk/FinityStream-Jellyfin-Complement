@@ -108,7 +108,7 @@ internal sealed class LibraryNotifications(
                 {
                     Title = LimitTitle(episode.Name),
                     SeriesId = seriesId == Guid.Empty ? null : seriesId.ToString("N"),
-                    SeriesTitle = LimitTitle(episode.SeriesName ?? series?.Name),
+                    SeriesTitle = TitleWithYear(episode.SeriesName ?? series?.Name, series?.ProductionYear),
                     SeasonId = item.SeasonId is null && Plugin.Instance?.Configuration.GroupEpisodes == true
                         && episode.SeasonId != Guid.Empty ? episode.SeasonId.ToString("N") : item.SeasonId,
                 };
@@ -169,8 +169,10 @@ internal sealed class LibraryNotifications(
         var seriesId = episodeInfo is not null && episodeInfo.SeriesId != Guid.Empty
             ? episodeInfo.SeriesId.ToString("N")
             : null;
+        var series = seriesId is not null ? library.GetItemById(episodeInfo!.SeriesId) : null;
         QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify,
-            NotificationTitle(args.Item), seriesId, LimitTitle(episodeInfo?.SeriesName)));
+            NotificationTitle(args.Item), seriesId,
+            TitleWithYear(episodeInfo?.SeriesName ?? series?.Name, series?.ProductionYear)));
     }
 
     internal void EnqueueArtworkChange(Guid itemId)
@@ -331,12 +333,15 @@ internal sealed class LibraryNotifications(
     private static string? LimitTitle(string? value) =>
         value is { Length: > 150 } ? string.Concat(value.EnumerateRunes().Take(150).Select(rune => rune.ToString())) : value;
 
-    private static string? NotificationTitle(BaseItem item)
+    private static string? NotificationTitle(BaseItem item) =>
+        TitleWithYear(item.Name, item is Movie or Series ? item.ProductionYear : null);
+
+    private static string? TitleWithYear(string? name, int? year)
     {
-        var title = LimitTitle(item.Name);
-        if (item is Movie or Series && item.ProductionYear is > 0 && !string.IsNullOrWhiteSpace(title))
+        var title = LimitTitle(name);
+        if (year is > 0 && !string.IsNullOrWhiteSpace(title))
         {
-            var suffix = $" ({item.ProductionYear})";
+            var suffix = $" ({year})";
             return title.EndsWith(suffix, StringComparison.Ordinal) ? title : title + suffix;
         }
 
