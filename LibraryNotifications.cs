@@ -109,6 +109,7 @@ internal sealed class LibraryNotifications(
                     Title = LimitTitle(episode.Name),
                     SeriesId = seriesId == Guid.Empty ? null : seriesId.ToString("N"),
                     SeriesTitle = TitleWithYear(episode.SeriesName ?? series?.Name, series?.ProductionYear),
+                    SeasonNumber = episode.ParentIndexNumber,
                     SeasonId = item.SeasonId is null && Plugin.Instance?.Configuration.GroupEpisodes == true
                         && episode.SeasonId != Guid.Empty ? episode.SeasonId.ToString("N") : item.SeasonId,
                 };
@@ -172,7 +173,8 @@ internal sealed class LibraryNotifications(
         var series = seriesId is not null ? library.GetItemById(episodeInfo!.SeriesId) : null;
         QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify,
             NotificationTitle(args.Item), seriesId,
-            TitleWithYear(episodeInfo?.SeriesName ?? series?.Name, series?.ProductionYear)));
+            TitleWithYear(episodeInfo?.SeriesName ?? series?.Name, series?.ProductionYear),
+            SeasonNumber: episodeInfo?.ParentIndexNumber));
     }
 
     internal void EnqueueArtworkChange(Guid itemId)
@@ -215,6 +217,7 @@ internal sealed class LibraryNotifications(
             item.Title,
             item.SeriesId,
             item.SeriesTitle,
+            item.SeasonNumber,
             item.UserId,
         };
 
@@ -350,5 +353,6 @@ internal sealed class LibraryNotifications(
 
     private sealed record LibraryEvent(
         Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify,
-        string? Title = null, string? SeriesId = null, string? SeriesTitle = null, string? UserId = null);
+        string? Title = null, string? SeriesId = null, string? SeriesTitle = null, string? UserId = null,
+        int? SeasonNumber = null);
 }
