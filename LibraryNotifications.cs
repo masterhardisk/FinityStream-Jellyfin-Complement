@@ -108,7 +108,8 @@ internal sealed class LibraryNotifications(
                 {
                     Title = LimitTitle(episode.Name),
                     SeriesId = seriesId == Guid.Empty ? null : seriesId.ToString("N"),
-                    SeriesTitle = LimitTitle(episode.SeriesName ?? series?.Name),
+                    SeriesTitle = TitleWithYear(episode.SeriesName ?? series?.Name, series?.ProductionYear),
+                    SeasonNumber = episode.ParentIndexNumber,
                     SeasonId = item.SeasonId is null && Plugin.Instance?.Configuration.GroupEpisodes == true
                         && episode.SeasonId != Guid.Empty ? episode.SeasonId.ToString("N") : item.SeasonId,
                 };
@@ -119,7 +120,7 @@ internal sealed class LibraryNotifications(
             }
             else if (current is not null)
             {
-                item = item with { Title = LimitTitle(current.Name) };
+                item = item with { Title = NotificationTitle(current) };
             }
 
             if (artworkItem?.HasImage(ImageType.Primary, 0) == true)
@@ -169,8 +170,11 @@ internal sealed class LibraryNotifications(
         var seriesId = episodeInfo is not null && episodeInfo.SeriesId != Guid.Empty
             ? episodeInfo.SeriesId.ToString("N")
             : null;
+        var series = seriesId is not null ? library.GetItemById(episodeInfo!.SeriesId) : null;
         QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify,
-            LimitTitle(args.Item.Name), seriesId, LimitTitle(episodeInfo?.SeriesName)));
+            NotificationTitle(args.Item), seriesId,
+            TitleWithYear(episodeInfo?.SeriesName ?? series?.Name, series?.ProductionYear),
+            SeasonNumber: episodeInfo?.ParentIndexNumber));
     }
 
     internal void EnqueueArtworkChange(Guid itemId)
@@ -213,6 +217,7 @@ internal sealed class LibraryNotifications(
             item.Title,
             item.SeriesId,
             item.SeriesTitle,
+            item.SeasonNumber,
             item.UserId,
         };
 
@@ -331,7 +336,23 @@ internal sealed class LibraryNotifications(
     private static string? LimitTitle(string? value) =>
         value is { Length: > 150 } ? string.Concat(value.EnumerateRunes().Take(150).Select(rune => rune.ToString())) : value;
 
+    private static string? NotificationTitle(BaseItem item) =>
+        TitleWithYear(item.Name, item is Movie or Series ? item.ProductionYear : null);
+
+    private static string? TitleWithYear(string? name, int? year)
+    {
+        var title = LimitTitle(name);
+        if (year is > 0 && !string.IsNullOrWhiteSpace(title))
+        {
+            var suffix = $" ({year})";
+            return title.EndsWith(suffix, StringComparison.Ordinal) ? title : title + suffix;
+        }
+
+        return title;
+    }
+
     private sealed record LibraryEvent(
         Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify,
-        string? Title = null, string? SeriesId = null, string? SeriesTitle = null, string? UserId = null);
+        string? Title = null, string? SeriesId = null, string? SeriesTitle = null, string? UserId = null,
+        int? SeasonNumber = null);
 }

@@ -22,6 +22,8 @@ Abre **Panel de control → Complementos → FinityStream Notifications**, activ
 
 Puedes elegir si quieres avisos visibles por películas y episodios. Antes de enviar un aviso visible, el complemento espera a que Jellyfin reporte una imagen principal para el elemento (o para la serie en el caso de un episodio). Si Jellyfin no obtiene una imagen en diez minutos, el aviso se envía igualmente. La opción de agrupar episodios espera tres minutos desde el primer episodio y reúne las altas en un solo aviso.
 
+Los avisos de películas y series incluyen el año de producción cuando Jellyfin lo proporciona, por ejemplo, `Blade Runner (1982)`. Los capítulos individuales muestran `Serie (2024) · Título del capítulo` y los avisos agrupados muestran `Serie (2024) · Temporada 2`, usando el año de la serie y el número de temporada. Los datos que falten se omiten. Mostrar la temporada requiere actualizar también el servicio de notificaciones y aplicar su migración `008_season_number.sql`.
+
 ## 3. Prueba una notificación
 
 Con el dispositivo registrado y los avisos activados, añade una película o un episodio nuevo y espera a que Jellyfin lo incorpore a la biblioteca. Deberías recibir un aviso en FinityStream.
