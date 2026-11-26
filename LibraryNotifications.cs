@@ -119,7 +119,7 @@ internal sealed class LibraryNotifications(
             }
             else if (current is not null)
             {
-                item = item with { Title = LimitTitle(current.Name) };
+                item = item with { Title = NotificationTitle(current) };
             }
 
             if (artworkItem?.HasImage(ImageType.Primary, 0) == true)
@@ -170,7 +170,7 @@ internal sealed class LibraryNotifications(
             ? episodeInfo.SeriesId.ToString("N")
             : null;
         QueueEvent(new(args.Item.Id, itemType, eventType, Guid.NewGuid(), seasonId, notify,
-            LimitTitle(args.Item.Name), seriesId, LimitTitle(episodeInfo?.SeriesName)));
+            NotificationTitle(args.Item), seriesId, LimitTitle(episodeInfo?.SeriesName)));
     }
 
     internal void EnqueueArtworkChange(Guid itemId)
@@ -330,6 +330,18 @@ internal sealed class LibraryNotifications(
 
     private static string? LimitTitle(string? value) =>
         value is { Length: > 150 } ? string.Concat(value.EnumerateRunes().Take(150).Select(rune => rune.ToString())) : value;
+
+    private static string? NotificationTitle(BaseItem item)
+    {
+        var title = LimitTitle(item.Name);
+        if (item is Movie or Series && item.ProductionYear is > 0 && !string.IsNullOrWhiteSpace(title))
+        {
+            var suffix = $" ({item.ProductionYear})";
+            return title.EndsWith(suffix, StringComparison.Ordinal) ? title : title + suffix;
+        }
+
+        return title;
+    }
 
     private sealed record LibraryEvent(
         Guid Id, string Type, string EventType, Guid EventId, string? SeasonId, bool Notify,
